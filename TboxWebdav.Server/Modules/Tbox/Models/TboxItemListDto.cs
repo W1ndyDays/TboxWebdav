@@ -35,7 +35,7 @@ namespace TboxWebdav.Server.Modules.Tbox.Models
         public long TotalNum { get; set; }
     }
 
-    public partial class TboxMergedItemDto
+    public partial class TboxMergedItemDto : TboxApiResponseDto
     {
         [JsonProperty("authorityList")]
         public TboxAuthorityList AuthorityList { get; set; }

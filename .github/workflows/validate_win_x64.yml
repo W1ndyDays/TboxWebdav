@@ -26,6 +26,9 @@ jobs:
       - name: Restore
         run: dotnet restore TboxWebdav.sln
 
+      - name: Test
+        run: dotnet test TboxWebdav.sln -c Release
+
       - name: Build solution
         run: dotnet build TboxWebdav.sln -c Release --no-restore
 

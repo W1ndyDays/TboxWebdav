@@ -9,6 +9,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TboxWebdav.Server.AspNetCor
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "WebStreamCaching", "WebStreamCaching\WebStreamCaching.csproj", "{3DECF051-C5DD-4962-B8DD-93DCCB3EBB26}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TboxWebdav.Server.Tests", "TboxWebdav.Server.Tests\TboxWebdav.Server.Tests.csproj", "{7ACDF417-33ED-4A8B-AD46-36B4AB7E791D}"
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "solution_files", "solution_files", "{C9DF2F68-F186-45AF-9994-7DB1BD9B11AB}"
 	ProjectSection(SolutionItems) = preProject
 		art_files\banner@2x.png = art_files\banner@2x.png
@@ -35,6 +37,10 @@ Global
 		{3DECF051-C5DD-4962-B8DD-93DCCB3EBB26}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3DECF051-C5DD-4962-B8DD-93DCCB3EBB26}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3DECF051-C5DD-4962-B8DD-93DCCB3EBB26}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7ACDF417-33ED-4A8B-AD46-36B4AB7E791D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7ACDF417-33ED-4A8B-AD46-36B4AB7E791D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7ACDF417-33ED-4A8B-AD46-36B4AB7E791D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7ACDF417-33ED-4A8B-AD46-36B4AB7E791D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

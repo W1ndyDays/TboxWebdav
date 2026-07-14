@@ -11,6 +11,12 @@ using Teru.Code.Models;
 
 namespace TboxWebdav.Server.Modules.Tbox.Services
 {
+    internal enum TboxItemKind
+    {
+        File,
+        Directory
+    }
+
     public class TboxService
     {
         public const string baseUrl = "https://pan.sjtu.edu.cn";
@@ -19,8 +25,10 @@ namespace TboxWebdav.Server.Modules.Tbox.Services
         private readonly HttpClientFactory _clientFactory;
         private readonly TboxUserTokenProvider _userTokenProvider;
         private readonly TboxSpaceCredProvider _credProvider;
+        private readonly string? _testUserToken;
+        private readonly TboxSpaceCred? _testCred;
 
-        public string UserToken => _userTokenProvider.GetUserToken();
+        public string UserToken => _testUserToken ?? _userTokenProvider.GetUserToken();
 
         public TboxService(TboxUserTokenProvider userTokenProvider, TboxSpaceCredProvider credProvider, HttpClientFactory clientFactory)
         {
@@ -28,6 +36,16 @@ namespace TboxWebdav.Server.Modules.Tbox.Services
             _credProvider = credProvider;
             _clientFactory = clientFactory;
             _client = _clientFactory.CreateClient();
+        }
+
+        internal TboxService(HttpClient client, string userToken, TboxSpaceCred cred)
+        {
+            _client = client;
+            _testUserToken = userToken;
+            _testCred = cred;
+            _userTokenProvider = null!;
+            _credProvider = null!;
+            _clientFactory = null!;
         }
 
         public static CommonResult<TboxLoginResDto> LoginUseJaccount(HttpClient client)
@@ -178,20 +196,19 @@ namespace TboxWebdav.Server.Modules.Tbox.Services
 
                 if (!res.IsSuccessStatusCode)
                 {
-                    try
-                    {
-                        var errbody = res.Content.ReadAsStringAsync().Result;
-                        var errjson = JsonConvert.DeserializeObject<TboxErrorMessageDto>(errbody);
-                        return new (false, $"{errjson.Message}");
-                    }
-                    catch (Exception ex)
-                    {
-                        return new (false, $"服务器响应{res.StatusCode}");
-                    }
+                    var errbody = res.Content.ReadAsStringAsync().Result;
+                    var result = CreateApiResponse<TboxMergedItemDto>(res.StatusCode, errbody);
+                    return new(false, result.Error?.Message ?? $"服务器响应{res.StatusCode}", result);
                 }
 
                 var body = res.Content.ReadAsStringAsync().Result;
                 var json = JsonConvert.DeserializeObject<TboxMergedItemDto>(body);
+
+                if (json == null)
+                    return new(false, "服务器返回了空的项目信息响应");
+
+                json.HttpStatusCode = res.StatusCode;
+                json.ResponseContent = body;
 
                 return new (true, "", json);
             }
@@ -779,6 +796,16 @@ namespace TboxWebdav.Server.Modules.Tbox.Services
 
         public CommonResult<TboxMoveFileDto> CopyOrMoveFile(string sourcePath, string destinationPath, bool isMove = false)
         {
+            return CopyOrMoveItem(sourcePath, destinationPath, TboxItemKind.File, isMove);
+        }
+
+        public CommonResult<TboxMoveFileDto> CopyOrMoveDirectory(string sourcePath, string destinationPath, bool isMove = false)
+        {
+            return CopyOrMoveItem(sourcePath, destinationPath, TboxItemKind.Directory, isMove);
+        }
+
+        internal CommonResult<TboxMoveFileDto> CopyOrMoveItem(string sourcePath, string destinationPath, TboxItemKind itemKind, bool isMove)
+        {
             try
             {
                 var cred = CheckLogined();
@@ -786,30 +813,28 @@ namespace TboxWebdav.Server.Modules.Tbox.Services
                 query.Add("conflict_resolution_strategy", "ask");
                 query.Add("access_token", cred.AccessToken);
 
-                HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Put, baseUrl + $"/api/v1/file/{cred.LibraryId}/{cred.SpaceId}/{destinationPath.UrlEncodeByParts()}" + UriHelper.BuildQuery(query));
+                var endpoint = itemKind == TboxItemKind.File ? "file" : "directory";
+                HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Put, baseUrl + $"/api/v1/{endpoint}/{cred.LibraryId}/{cred.SpaceId}/{destinationPath.UrlEncodeByParts()}" + UriHelper.BuildQuery(query));
 
-                req.Content = new StringContent($$"""
-                    {"{{(isMove ? "from" : "copyFrom")}}":"{{sourcePath}}"}
-                    """);
-                req.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                req.Content = JsonContent.Create(new Dictionary<string, string>
+                {
+                    [isMove ? "from" : "copyFrom"] = sourcePath
+                });
 
                 var res = _client.SendAsync(req).GetAwaiter().GetResult();
+                var body = res.Content.ReadAsStringAsync().Result;
 
                 if (!res.IsSuccessStatusCode)
                 {
-                    try
-                    {
-                        var errbody = res.Content.ReadAsStringAsync().Result;
-                        var errjson = JsonConvert.DeserializeObject<TboxErrorMessageDto>(errbody);
-                        return new(false, $"[{errjson.Code}]{errjson.Message}");
-                    }
-                    catch (Exception ex)
-                    {
-                        return new(false, $"服务器响应{res.StatusCode}");
-                    }
+                    var result = CreateApiResponse<TboxMoveFileDto>(res.StatusCode, body);
+                    return new(false, result.Error?.Message ?? $"服务器响应{res.StatusCode}", result);
                 }
-                var body = res.Content.ReadAsStringAsync().Result;
-                var json = JsonConvert.DeserializeObject<TboxMoveFileDto>(body);
+
+                var json = string.IsNullOrWhiteSpace(body)
+                    ? new TboxMoveFileDto()
+                    : JsonConvert.DeserializeObject<TboxMoveFileDto>(body) ?? new TboxMoveFileDto();
+                json.HttpStatusCode = res.StatusCode;
+                json.ResponseContent = body;
 
                 return new(true, "", json);
             }
@@ -819,10 +844,37 @@ namespace TboxWebdav.Server.Modules.Tbox.Services
             }
         }
 
+        private static T CreateApiResponse<T>(HttpStatusCode statusCode, string responseContent)
+            where T : TboxApiResponseDto, new()
+        {
+            TboxErrorMessageDto? error = null;
+            if (!string.IsNullOrWhiteSpace(responseContent))
+            {
+                try
+                {
+                    error = JsonConvert.DeserializeObject<TboxErrorMessageDto>(responseContent);
+                }
+                catch (JsonException)
+                {
+                }
+            }
+
+            return new T
+            {
+                HttpStatusCode = statusCode,
+                Error = error,
+                ResponseContent = responseContent
+            };
+        }
+
         private TboxSpaceCred CheckLogined()
         {
             if (string.IsNullOrEmpty(UserToken)) 
                 throw new Exception("未登录");
+
+            if (_testCred != null)
+                return _testCred;
+
             var cred = _credProvider.GetSpaceCred(UserToken);
             if (cred == null)
             {

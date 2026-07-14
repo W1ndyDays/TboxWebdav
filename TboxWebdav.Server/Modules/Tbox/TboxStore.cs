@@ -4,8 +4,10 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using TboxWebdav.Server.Modules.Tbox.Models;
 using TboxWebdav.Server.Modules.Tbox.Models.Convertion;
 using TboxWebdav.Server.Modules.Tbox.Services;
 using TboxWebdav.Server.Modules.Webdav;
@@ -13,6 +15,7 @@ using TboxWebdav.Server.Modules.Webdav.Internal;
 using TboxWebdav.Server.Modules.Webdav.Internal.Helpers;
 using TboxWebdav.Server.Modules.Webdav.Internal.Locking;
 using TboxWebdav.Server.Modules.Webdav.Internal.Stores;
+using Teru.Code.Models;
 
 namespace TboxWebdav.Server.Modules.Tbox
 {
@@ -141,20 +144,69 @@ namespace TboxWebdav.Server.Modules.Tbox
 
         public async Task<DavStatusCode> DirectMoveItemAsync(string srcItemPath, string destItemPath)
         {
-            var res = _tbox.CopyOrMoveFile(srcItemPath, destItemPath, true);
+            var sourceInfo = _tbox.GetItemInfo(srcItemPath);
+            if (!sourceInfo.Success)
+            {
+                var sourceStatus = sourceInfo.Result?.HttpStatusCode;
+                _logger.LogError(
+                    "Move source lookup failed. SourcePath={SourcePath}, DestinationPath={DestinationPath}, HttpStatus={HttpStatus}, ErrorCode={ErrorCode}, ErrorMessage={ErrorMessage}",
+                    srcItemPath,
+                    destItemPath,
+                    sourceStatus,
+                    sourceInfo.Result?.Error?.Code,
+                    sourceInfo.Result?.Error?.Message ?? sourceInfo.Message);
+
+                return sourceStatus == HttpStatusCode.NotFound
+                    ? DavStatusCode.NotFound
+                    : DavStatusCode.InternalServerError;
+            }
+
+            CommonResult<TboxMoveFileDto> res;
+            string itemKind;
+            if (sourceInfo.Result.Type == "file")
+            {
+                itemKind = "file";
+                res = _tbox.CopyOrMoveFile(srcItemPath, destItemPath, true);
+            }
+            else if (sourceInfo.Result.Type == "dir")
+            {
+                itemKind = "directory";
+                res = _tbox.CopyOrMoveDirectory(srcItemPath, destItemPath, true);
+            }
+            else
+            {
+                _logger.LogError(
+                    "Move source has an unknown item type. ItemType={ItemType}, SourcePath={SourcePath}, DestinationPath={DestinationPath}",
+                    sourceInfo.Result.Type,
+                    srcItemPath,
+                    destItemPath);
+                return DavStatusCode.InternalServerError;
+            }
+
             if (res.Success)
             {
                 return DavStatusCode.Ok;
             }
-            else if (res.Message.Contains("SourceFileNotFound"))
+
+            var statusCode = res.Result?.HttpStatusCode;
+            _logger.LogError(
+                "Move item failed. ItemKind={ItemKind}, SourcePath={SourcePath}, DestinationPath={DestinationPath}, HttpStatus={HttpStatus}, ErrorCode={ErrorCode}, ErrorMessage={ErrorMessage}",
+                itemKind,
+                srcItemPath,
+                destItemPath,
+                statusCode,
+                res.Result?.Error?.Code,
+                res.Result?.Error?.Message ?? res.Message);
+
+            return statusCode switch
             {
-                return DavStatusCode.NotFound;
-            }
-            else
-            {
-                _logger.LogError($"MoveIten failed: {res.Message}");
-                return DavStatusCode.InternalServerError;
-            }
+                HttpStatusCode.BadRequest => DavStatusCode.BadRequest,
+                HttpStatusCode.Forbidden => DavStatusCode.Forbidden,
+                HttpStatusCode.NotFound => DavStatusCode.NotFound,
+                HttpStatusCode.Conflict => DavStatusCode.Conflict,
+                HttpStatusCode.PreconditionFailed => DavStatusCode.PreconditionFailed,
+                _ => DavStatusCode.InternalServerError
+            };
         }
     }
 }
