@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace TboxWebdav.Server.Modules.Tbox.Models
 {
-    public partial class TboxMoveFileDto
+    public partial class TboxMoveFileDto : TboxApiResponseDto
     {
         [JsonProperty("path")]
         public List<string> Path { get; set; }
