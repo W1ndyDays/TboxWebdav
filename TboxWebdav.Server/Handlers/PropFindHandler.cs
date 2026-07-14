@@ -131,6 +131,7 @@ namespace TboxWebdav.Server.Handlers
 
                 // Create tags for property values
                 var xPropStatValues = new XElement(WebDavNamespaces.DavNs + "propstat");
+                var errorPropStats = new List<XElement>();
 
                 // Check if the entry supports properties
                 var propertyManager = entry.Entry.PropertyManager;
@@ -143,8 +144,6 @@ namespace TboxWebdav.Server.Handlers
                         foreach (var property in propertyManager.Properties)
                             xPropStatValues.Add(new XElement(property.Name));
 
-                        // Add the values
-                        xResponse.Add(xPropStatValues);
                     }
                     else
                     {
@@ -152,23 +151,28 @@ namespace TboxWebdav.Server.Handlers
                         if ((propertyMode & PropertyMode.AllProperties) != 0)
                         {
                             foreach (var propertyName in propertyManager.Properties.Where(p => !p.IsExpensive).Select(p => p.Name))
-                                await AddPropertyAsync(httpContext, xResponse, xPropStatValues, propertyManager, entry.Entry, propertyName, addedProperties).ConfigureAwait(false);
+                                await AddPropertyAsync(httpContext, xPropStatValues, errorPropStats, propertyManager, entry.Entry, propertyName, addedProperties).ConfigureAwait(false);
                         }
 
                         if ((propertyMode & PropertyMode.SelectedProperties) != 0)
                         {
                             foreach (var propertyName in propertyList)
-                                await AddPropertyAsync(httpContext, xResponse, xPropStatValues, propertyManager, entry.Entry, propertyName, addedProperties).ConfigureAwait(false);
+                                await AddPropertyAsync(httpContext, xPropStatValues, errorPropStats, propertyManager, entry.Entry, propertyName, addedProperties).ConfigureAwait(false);
                         }
-
-                        // Add the values (if any)
-                        if (xPropStatValues.HasElements)
-                            xResponse.Add(xPropStatValues);
                     }
                 }
 
-                // Add the status
-                xPropStatValues.Add(new XElement(WebDavNamespaces.DavNs + "status", "HTTP/1.1 200 OK"));
+                // Successful properties must be emitted before per-property errors.
+                // Some WebDAV clients, including rclone, use the first propstat
+                // status to decide whether the whole item is valid.
+                if (xPropStatValues.HasElements)
+                {
+                    xPropStatValues.Add(new XElement(WebDavNamespaces.DavNs + "status", "HTTP/1.1 200 OK"));
+                    xResponse.Add(xPropStatValues);
+                }
+
+                foreach (var errorPropStat in errorPropStats)
+                    xResponse.Add(errorPropStat);
 
                 // Add the property
                 xMultiStatus.Add(xResponse);
@@ -178,7 +182,7 @@ namespace TboxWebdav.Server.Handlers
             return new WebDavResult(DavStatusCode.MultiStatus, xDocument);
         }
 
-        private async Task AddPropertyAsync(HttpContext httpContext, XElement xResponse, XElement xPropStatValues, IPropertyManager propertyManager, IStoreItem item, XName propertyName, IList<XName> addedProperties)
+        private async Task AddPropertyAsync(HttpContext httpContext, XElement xPropStatValues, ICollection<XElement> errorPropStats, IPropertyManager propertyManager, IStoreItem item, XName propertyName, IList<XName> addedProperties)
         {
             if (!addedProperties.Contains(propertyName))
             {
@@ -205,7 +209,7 @@ namespace TboxWebdav.Server.Handlers
                     else
                     {
                         _logger.Log(LogLevel.Warning, $"Property {propertyName} is not supported on item {item.Name}.");
-                        xResponse.Add(new XElement(WebDavNamespaces.DavNs + "propstat",
+                        errorPropStats.Add(new XElement(WebDavNamespaces.DavNs + "propstat",
                             new XElement(WebDavNamespaces.DavNs + "prop", new XElement(propertyName, null)),
                             new XElement(WebDavNamespaces.DavNs + "status", "HTTP/1.1 404 Not Found"),
                             new XElement(WebDavNamespaces.DavNs + "responsedescription", $"Property {propertyName} is not supported.")));
@@ -214,7 +218,7 @@ namespace TboxWebdav.Server.Handlers
                 catch (Exception exc)
                 {
                     _logger.Log(LogLevel.Error, $"Property {propertyName} on item {item.Name} raised an exception.", exc);
-                    xResponse.Add(new XElement(WebDavNamespaces.DavNs + "propstat",
+                    errorPropStats.Add(new XElement(WebDavNamespaces.DavNs + "propstat",
                         new XElement(WebDavNamespaces.DavNs + "prop", new XElement(propertyName, null)),
                         new XElement(WebDavNamespaces.DavNs + "status", "HTTP/1.1 500 Internal server error"),
                         new XElement(WebDavNamespaces.DavNs + "responsedescription", $"Property {propertyName} on item {item.Name} raised an exception.")));
@@ -293,6 +297,5 @@ namespace TboxWebdav.Server.Handlers
         }
     }
 }
-
 
 

@@ -1,0 +1,46 @@
+name: Validate Windows x64 Build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [master]
+  push:
+    branches:
+      - "fix/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-win-x64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore TboxWebdav.sln
+
+      - name: Build solution
+        run: dotnet build TboxWebdav.sln -c Release --no-restore
+
+      - name: Publish Windows x64 self-contained build
+        run: >-
+          dotnet publish
+          -c Release
+          -r win-x64
+          TboxWebdav.Server.AspNetCore/TboxWebdav.Server.AspNetCore.csproj
+          --self-contained true
+
+      - name: Upload Windows x64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TboxWebdav.Server.AspNetCore-win-x64-with-runtime
+          path: TboxWebdav.Server.AspNetCore/bin/Release/net8.0/win-x64/publish/
+          if-no-files-found: error
+          retention-days: 7

@@ -67,6 +67,10 @@ namespace TboxWebdav.Server.Modules.Tbox
                     return DavStatusCode.Ok;
                 }
             },
+            new DavGetContentLength<TboxStoreCollection>
+            {
+                Getter = (context, collection) => 0L
+            },
             new DavGetResourceType<TboxStoreCollection>
             {
                 Getter = (context, collection) => new []{s_xDavCollection}
@@ -189,7 +193,7 @@ namespace TboxWebdav.Server.Modules.Tbox
             // Determine the full path
             var fullPath = UriHelper.Combine(FullPath, name);
 
-            var res = _tbox.GetItemInfo(FullPath);
+            var res = _tbox.GetItemInfo(fullPath);
 
             if (!res.Success)
             {
