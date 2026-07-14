@@ -35,12 +35,12 @@ jobs:
       - name: Pack Release Asset
         run: |
           cd TboxWebdav.Server.AspNetCore/bin/${{ matrix.build_configuration }}/net8.0/${{ matrix.rid }}/publish/
-          zip -r /tmp/app-${{ matrix.rid }}-${{ matrix.build_configuration }}.zip .
+          zip -r /tmp/TboxWebdav.Server.AspNetCore-${{ matrix.rid }}-${{ matrix.deploy_mode }}.zip .
 
       - name: Upload Release Asset
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release upload "${{ github.event.release.tag_name }}"
-          "/tmp/app-${{ matrix.rid }}-${{ matrix.build_configuration }}.zip#TboxWebdav.Server.AspNetCore-${{ matrix.rid }}-${{ matrix.deploy_mode }}.zip"
+          "/tmp/TboxWebdav.Server.AspNetCore-${{ matrix.rid }}-${{ matrix.deploy_mode }}.zip"
           --clobber
